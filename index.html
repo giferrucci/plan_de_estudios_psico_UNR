@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Plan de Estudios de Psicología</title>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather+Sans:wght@300;400;700&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <!-- Biblioteca de Confeti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variables globales proporcionadas por el entorno de Canvas/Immersive
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentUserId = null; // Para almacenar el ID del usuario actual
+
+        // Exportar para que el script principal pueda usarlos
+        window.firebaseApp = app;
+        window.firebaseDb = db;
+        window.firebaseAuth = auth;
+        window.firebaseUserId = currentUserId; // Se actualizará después de la autenticación
+        window.signInFirebase = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                currentUserId = auth.currentUser.uid;
+                window.firebaseUserId = currentUserId; // Actualizar la variable global
+                console.log("Firebase autenticado. User ID:", currentUserId);
+                return currentUserId;
+            } catch (error) {
+                console.error("Error al autenticar con Firebase:", error);
+                // Si falla la autenticación, usar un ID aleatorio para permitir el uso local sin persistencia
+                currentUserId = crypto.randomUUID();
+                window.firebaseUserId = currentUserId;
+                console.warn("Usando ID de usuario aleatorio debido a fallo de autenticación:", currentUserId);
+                return currentUserId;
+            }
+        };
+
+        // Escuchar cambios en el estado de autenticación
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUserId = user.uid;
+                window.firebaseUserId = currentUserId;
+                console.log("Estado de autenticación cambiado. User ID:", currentUserId);
+                // Aquí podrías llamar a loadProgress() si no lo haces en DOMContentLoaded
+            } else {
+                currentUserId = null;
+                window.firebaseUserId = null;
+                console.log("Usuario desautenticado.");
+            }
+        });
+
+        // Funciones de Firestore para guardar y cargar
+        window.saveCourseProgress = async (courseStatus) => {
+            if (!currentUserId) {
+                console.warn("No hay ID de usuario para guardar el progreso.");
+                return;
+            }
+            try {
+                const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/careerProgress`, 'myCourses');
+                await setDoc(userDocRef, { status: courseStatus });
+                console.log("Progreso guardado exitosamente.");
+            } catch (e) {
+                console.error("Error al guardar el progreso: ", e);
+            }
+        };
+
+        window.loadCourseProgress = (callback) => {
+            if (!currentUserId) {
+                console.warn("No hay ID de usuario para cargar el progreso.");
+                callback({}); // Retorna un objeto vacío si no hay usuario
+                return;
+            }
+            const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/careerProgress`, 'myCourses');
+            onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    console.log("Progreso cargado:", data.status);
+                    callback(data.status);
+                } else {
+                    console.log("No se encontró progreso guardado.");
+                    callback({}); // Retorna un objeto vacío si no hay datos
+                }
+            }, (error) => {
+                console.error("Error al cargar el progreso: ", error);
+                callback({}); // Retorna un objeto vacío en caso de error
+            });
+        };
+    </script>
+
+    <style>
+        /* Estilos Generales y Reseteo */
+        :root {
+            --color-background: #f8f5ed; /* Crema claro */
+            --color-text: #36454F; /* Gris carbón */
+            --color-card-bg: #e0e0d8; /* Gris piedra claro */
+            --color-card-border: #b0b0a8; /* Gris piedra */
+            --color-regularized: #d4e3cb; /* Verde menta claro */
+            --color-approved: #c0c0c0; /* Gris medio */
+            --color-disabled-text: #a0a0a0; /* Gris claro */
+            --color-heading: #5c6f7b; /* Azul grisáceo */
+            --font-main: 'Merriweather Sans', sans-serif;
+            --font-typewriter: 'IBM Plex Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--color-background);
+            color: var(--color-text);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden; /* Evita el scroll horizontal */
+            position: relative; /* Para el fondo */
+        }
+
+        /* Fondo con imágenes y superposición */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Puedes cambiar estas URLs por imágenes reales que te gusten */
+            /* Sugerencia: Busca imágenes de dominio público en Unsplash, Pexels, o Wikimedia Commons */
+            background-image:
+                url('https://placehold.co/1920x1080/f0e8d8/606060?text=Estatua+Griega+Sutil'), /* Estatua */
+                url('https://placehold.co/1920x1080/e0e0d8/606060?text=Patron+Antiguo'); /* Patrón o textura */
+            background-size: cover, cover;
+            background-position: center center, center center;
+            background-repeat: no-repeat, no-repeat;
+            opacity: 0.2; /* Opacidad para que no distraiga del contenido */
+            z-index: -1; /* Envía el fondo detrás del contenido */
+            filter: grayscale(50%) blur(1px); /* Efecto para un look más "antiguo" */
+        }
+
+        h1 {
+            font-family: var(--font-typewriter);
+            font-weight: 700;
+            color: var(--color-heading);
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+            position: relative; /* Para que esté por encima del fondo */
+            z-index: 1;
+        }
+
+        .loading-indicator {
+            font-family: var(--font-typewriter);
+            color: var(--color-heading);
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            opacity: 0.8;
+            position: relative;
+            z-index: 1;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.9); /* Blanco puro con ligera transparencia */
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px; /* Espacio entre columnas de años */
+            position: relative; /* Para que esté por encima del fondo */
+            z-index: 1;
+        }
+
+        .year-section {
+            flex: 1;
+            min-width: 280px; /* Ancho mínimo para cada columna de año */
+            max-width: 350px; /* Ancho máximo para cada columna de año */
+            background-color: var(--color-card-bg); /* Fondo para la sección del año */
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--color-card-border);
+            display: flex;
+            flex-direction: column;
+            gap: 15px; /* Espacio entre los globos de materias */
+        }
+
+        .year-section h2 {
+            font-family: var(--font-typewriter);
+            font-weight: 400;
+            color: var(--color-heading);
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 1.8em;
+            border-bottom: 1px dashed var(--color-card-border);
+            padding-bottom: 10px;
+        }
+
+        .course-card {
+            background-color: var(--color-card-bg);
+            border: 1px solid var(--color-card-border);
+            border-radius: 8px;
+            padding: 15px 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            font-family: var(--font-typewriter);
+            font-weight: 300;
+            line-height: 1.4;
+            position: relative; /* Para el tachado */
+        }
+
+        .course-card:hover:not(.disabled):not(.approved) {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #f0f0e8; /* Ligeramente más claro al pasar el ratón */
+        }
+
+        .course-card.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background-color: #f0f0f0; /* Fondo más claro para deshabilitadas */
+            color: var(--color-disabled-text);
+            border-color: #d0d0d0;
+        }
+
+        .course-card.regularized {
+            background-color: var(--color-regularized);
+            border-color: #8cbf7f; /* Verde más oscuro */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .course-card.approved {
+            background-color: var(--color-approved);
+            border-color: #909090;
+            color: var(--color-disabled-text);
+            text-decoration: line-through;
+            opacity: 0.8;
+            cursor: default;
+        }
+
+        .course-card.approved::after {
+            content: '✔️'; /* Símbolo de checkmark */
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            font-size: 1.2em;
+            color: #4CAF50; /* Verde brillante */
+        }
+
+        .course-card p {
+            margin: 0;
+            padding: 0;
+        }
+
+        .course-card .course-number {
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: var(--color-heading);
+        }
+
+        .course-card .course-name {
+            font-size: 1.1em;
+            margin-bottom: 8px;
+        }
+
+        .course-card .course-details {
+            font-size: 0.85em;
+            color: #606060;
+        }
+
+        /* Estilos del Modal de Felicitación */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background-color: var(--color-background);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 500px;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+            position: relative;
+        }
+
+        .modal-overlay.show .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-content h3 {
+            font-family: var(--font-typewriter);
+            font-size: 2.2em;
+            color: var(--color-heading);
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .modal-content p {
+            font-family: var(--font-main);
+            font-size: 1.2em;
+            color: var(--color-text);
+            margin-bottom: 30px;
+        }
+
+        .modal-content button {
+            background-color: var(--color-heading);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-family: var(--font-main);
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .modal-content button:hover {
+            background-color: #4a5c68;
+            transform: translateY(-2px);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+                gap: 20px;
+            }
+            .year-section {
+                width: 90%;
+                max-width: 500px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2em;
+                margin-bottom: 30px;
+            }
+            .container {
+                padding: 15px;
+            }
+            .year-section {
+                padding: 15px;
+            }
+            .year-section h2 {
+                font-size: 1.5em;
+                margin-bottom: 20px;
+            }
+            .course-card {
+                padding: 12px 15px;
+            }
+            .course-card .course-name {
+                font-size: 1em;
+            }
+            .modal-content {
+                padding: 25px;
+                margin: 0 15px;
+            }
+            .modal-content h3 {
+                font-size: 1.8em;
+            }
+            .modal-content p {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Mi Viaje Académico: Plan de Estudios de Psicología 📚</h1>
+
+    <!-- Música de Fondo (Asegúrate de que la URL sea de un archivo de audio libre de derechos de autor) -->
+    <!-- Los navegadores modernos a menudo bloquean el autoplay. El usuario podría necesitar interactuar primero. -->
+    <audio id="background-music" loop autoplay>
+        <!-- ¡IMPORTANTE! Reemplaza esta URL con la de tu archivo de música. -->
+        <!-- Ejemplo de URL (solo para demostración, busca una real y libre de derechos): -->
+        <!-- <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg"> -->
+        Tu navegador no soporta el elemento de audio.
+    </audio>
+
+    <div id="loadingIndicator" class="loading-indicator">Cargando progreso...</div>
+
+    <div class="container">
+        
+<div class="year-section">
+            <h2>Primer Año 🌿</h2>
+            <div id="course-01" class="course-card disabled">
+                <p class="course-number">01</p>
+                <p class="course-name">Desarrollos Psicológicos Contemporáneos</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-02" class="course-card disabled">
+                <p class="course-number">02</p>
+                <p class="course-name">Problemas Epistemológicos de la Psicología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-03" class="course-card disabled">
+                <p class="course-number">03</p>
+                <p class="course-name">Psicología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-04" class="course-card disabled">
+                <p class="course-number">04</p>
+                <p class="course-name">Problemática Filosófica</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-05" class="course-card disabled">
+                <p class="course-number">05</p>
+                <p class="course-name">Lingüística y Discursividad Social</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+        </div>
+
+        
+<div class="year-section">
+            <h2>Segundo Año 📖</h2>
+            <div id="course-06" class="course-card disabled">
+                <p class="course-number">06</p>
+                <p class="course-name">Historia de la Psicología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-07" class="course-card disabled">
+                <p class="course-number">07</p>
+                <p class="course-name">Metodologías y Gestión de la Investigación en Psicología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-08" class="course-card disabled">
+                <p class="course-number">08</p>
+                <p class="course-name">Psicoanálisis I</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-09" class="course-card disabled">
+                <p class="course-number">09</p>
+                <p class="course-name">Teoría Social</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-10" class="course-card disabled">
+                <p class="course-number">10</p>
+                <p class="course-name">Biología Humana</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+        </div>
+
+        
+<div class="year-section">
+            <h2>Tercer Año 💡</h2>
+            <div id="course-11" class="course-card disabled">
+                <p class="course-number">11</p>
+                <p class="course-name">Epistemología de la Psicología y el Psicoanálisis</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-12" class="course-card disabled">
+                <p class="course-number">12</p>
+                <p class="course-name">Perspectivas en Educación</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-13" class="course-card disabled">
+                <p class="course-number">13</p>
+                <p class="course-name">Psicoanálisis II</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-14" class="course-card disabled">
+                <p class="course-number">14</p>
+                <p class="course-name">Psicología Social y Comunitaria</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-15" class="course-card disabled">
+                <p class="course-number">15</p>
+                <p class="course-name">Neuropsicología y Psicología del Desarrollo</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+        </div>
+
+        
+<div class="year-section">
+            <h2>Cuarto Año 🧠</h2>
+            <div id="course-16" class="course-card disabled">
+                <p class="course-number">16</p>
+                <p class="course-name">Historia y Epistemología de la Psicología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-17" class="course-card disabled">
+                <p class="course-number">17</p>
+                <p class="course-name">Evaluación y Psicodiagnóstico</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-18" class="course-card disabled">
+                <p class="course-number">18</p>
+                <p class="course-name">Psicoanálisis y Psicopatología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-19" class="course-card disabled">
+                <p class="course-number">19</p>
+                <p class="course-name">Organizaciones e Instituciones</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-20" class="course-card disabled">
+                <p class="course-number">20</p>
+                <p class="course-name">Psicología del Lenguaje y del Desarrollo</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-21" class="course-card disabled">
+                <p class="course-number">21</p>
+                <p class="course-name">Psicopatología y Neurofarmacología</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+        </div>
+
+        
+<div class="year-section">
+            <h2>Quinto Año ⚖️</h2>
+            <div id="course-22" class="course-card disabled">
+                <p class="course-number">22</p>
+                <p class="course-name">Salud Pública y Salud Mental</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-23" class="course-card disabled">
+                <p class="course-number">23</p>
+                <p class="course-name">Psicología en el Ámbito Jurídico Forense</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+            <div id="course-24" class="course-card disabled">
+                <p class="course-number">24</p>
+                <p class="course-name">Psicología en Educación</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-25" class="course-card disabled">
+                <p class="course-number">25</p>
+                <p class="course-name">Psicoterapias</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-26" class="course-card disabled">
+                <p class="course-number">26</p>
+                <p class="course-name">Clínica I</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-27" class="course-card disabled">
+                <p class="course-number">27</p>
+                <p class="course-name">Psicología en el Trabajo</p>
+                <p class="course-details">Carga Total: 120 hs</p>
+            </div>
+        </div>
+
+        
+<div class="year-section">
+            <h2>Sexto Año 🎓</h2>
+            <div id="course-28" class="course-card disabled">
+                <p class="course-number">28</p>
+                <p class="course-name">Intervenciones en Niñez y Adolescencia</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-29" class="course-card disabled">
+                <p class="course-number">29</p>
+                <p class="course-name">Metodologías de la Investigación en Psicología</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-30" class="course-card disabled">
+                <p class="course-number">30</p>
+                <p class="course-name">Clínica II</p>
+                <p class="course-details">Carga Total: 90 hs</p>
+            </div>
+            <div id="course-31" class="course-card disabled">
+                <p class="course-number">31</p>
+                <p class="course-name">Seminarios y Prácticas de Investigación y Extensión A-B-C</p>
+                <p class="course-details">Carga Total: 2 hs</p>
+            </div>
+            <div id="course-32" class="course-card disabled">
+                <p class="course-number">32</p>
+                <p class="course-name">Práctica Profesional Supervisada</p>
+                <p class="course-details">Carga Total: 360 hs</p>
+            </div>
+            <div id="course-33" class="course-card disabled">
+                <p class="course-number">33</p>
+                <p class="course-name">Trabajo Integrador Final</p>
+                <p class="course-details">Carga Total: - hs</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Felicitación -->
+    <div id="congratulationsModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>¡Felicidades! 🎉</h3>
+            <p>¡Has completado tu plan de estudios! Ya eres Psicólogo/a.</p>
+            <button id="closeModalButton">Cerrar</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Importar las funciones y variables globales de Firebase
+        const { firebaseApp, firebaseDb, firebaseAuth, signInFirebase, saveCourseProgress, loadCourseProgress } = window;
+
+        const coursesData = {
+            "course-01": { name: "Desarrollos Psicológicos Contemporáneos", correlatives: [] },
+            "course-02": { name: "Problemas Epistemológicos de la Psicología", correlatives: [] },
+            "course-03": { name: "Psicología", correlatives: [] },
+            "course-04": { name: "Problemática Filosófica", correlatives: [] },
+            "course-05": { name: "Lingüística y Discursividad Social", correlatives: [] },
+            "course-06": { name: "Historia de la Psicología", correlatives: ["course-01", "course-04"] },
+            "course-07": { name: "Metodologías y Gestión de la Investigación en Psicología", correlatives: ["course-02"] },
+            "course-08": { name: "Psicoanálisis I", correlatives: ["course-03"] },
+            "course-09": { name: "Teoría Social", correlatives: ["course-05"] },
+            "course-10": { name: "Biología Humana", correlatives: [] },
+            "course-11": { name: "Epistemología de la Psicología y el Psicoanálisis", correlatives: ["course-06"] },
+            "course-12": { name: "Perspectivas en Educación", correlatives: ["course-07"] },
+            "course-13": { name: "Psicoanálisis II", correlatives: ["course-08"] },
+            "course-14": { name: "Psicología Social y Comunitaria", correlatives: ["course-09"] },
+            "course-15": { name: "Neuropsicología y Psicología del Desarrollo", correlatives: ["course-10"] },
+            "course-16": { name: "Historia y Epistemología de la Psicología", correlatives: ["course-11"] },
+            "course-17": { name: "Evaluación y Psicodiagnóstico", correlatives: ["course-12"] },
+            "course-18": { name: "Psicoanálisis y Psicopatología", correlatives: ["course-13"] },
+            "course-19": { name: "Organizaciones e Instituciones", correlatives: ["course-14"] },
+            "course-20": { name: "Psicología del Lenguaje y del Desarrollo", correlatives: ["course-15"] },
+            "course-21": { name: "Psicopatología y Neurofarmacología", correlatives: ["course-15"] },
+            "course-22": { name: "Salud Pública y Salud Mental", correlatives: ["course-16"] },
+            "course-23": { name: "Psicología en el Ámbito Jurídico Forense", correlatives: ["course-16"] },
+            "course-24": { name: "Psicología en Educación", correlatives: ["course-17"] },
+            "course-25": { name: "Psicoterapias", correlatives: ["course-17"] },
+            "course-26": { name: "Clínica I", correlatives: ["course-18"] },
+            "course-27": { name: "Psicología en el Trabajo", correlatives: ["course-19"] },
+            "course-28": { name: "Intervenciones en Niñez y Adolescencia", correlatives: ["course-24"] },
+            "course-29": { name: "Metodologías de la Investigación en Psicología", correlatives: ["course-25"] },
+            "course-30": { name: "Clínica II", correlatives: ["course-26"] },
+            "course-31": { name: "Seminarios y Prácticas de Investigación y Extensión A-B-C", correlatives: [] },
+            "course-32": { name: "Práctica Profesional Supervisada", correlatives: ["course-20", "course-21", "course-22", "course-23", "course-24", "course-25", "course-26", "course-27"] },
+            "course-33": { name: "Trabajo Integrador Final", correlatives: ["course-28", "course-29", "course-30", "course-31", "course-32"] }
+        };
+
+        // Estado de las materias: 'pending', 'regularized', 'approved'
+        let courseStatus = {}; // Ahora será actualizado por Firestore
+
+        // Confetti colors (light academia palette)
+        const confettiColors = [
+            '#F8F5ED', // Crema claro (background)
+            '#E0E0D8', // Gris piedra claro (card background)
+            '#B0B0A8', // Gris piedra (card border)
+            '#D4E3CB', // Verde menta claro (regularized)
+            '#C0C0C0', // Gris medio (approved)
+            '#5C6F7B', // Azul grisáceo (heading)
+            '#A9A9A9', // Gris oscuro suave
+            '#D2B48C'  // Tan/Arena
+        ];
+
+        // Función para verificar si una materia puede ser habilitada
+        function canEnableCourse(courseId) {
+            const correlatives = coursesData[courseId].correlatives;
+            if (correlatives.length === 0) {
+                return true; // No tiene correlativas, siempre habilitada
+            }
+            // Verifica si TODAS las correlativas están regularizadas o aprobadas
+            return correlatives.every(corrId => courseStatus[corrId] === 'regularized' || courseStatus[corrId] === 'approved');
+        }
+
+        // Función para actualizar el estado visual de una materia
+        function updateCourseCard(courseId) {
+            const card = document.getElementById(courseId);
+            if (!card) return;
+
+            card.classList.remove('disabled', 'regularized', 'approved');
+
+            if (courseStatus[courseId] === 'regularized') {
+                card.classList.add('regularized');
+            } else if (courseStatus[courseId] === 'approved') {
+                card.classList.add('approved');
+                // Si la materia aprobada es el Trabajo Integrador Final, mostrar felicitación
+                if (courseId === 'course-33') {
+                    showCongratulationsModal();
+                    triggerConfetti();
+                }
+            } else if (!canEnableCourse(courseId)) {
+                card.classList.add('disabled');
+            }
+        }
+
+        // Función para actualizar todas las tarjetas en la UI
+        function updateAllCourseCards() {
+            for (const id in coursesData) {
+                updateCourseCard(id);
+            }
+        }
+
+        // Función para habilitar correlativas
+        function enableCorrelatives() {
+            for (const id in coursesData) {
+                // Solo actualiza si la materia no está ya regularizada o aprobada
+                if (courseStatus[id] === 'pending' && canEnableCourse(id)) {
+                    const card = document.getElementById(id);
+                    if (card && card.classList.contains('disabled')) {
+                        card.classList.remove('disabled');
+                    }
+                }
+            }
+        }
+
+        // Funciones para el Modal de Felicitación
+        const congratulationsModal = document.getElementById('congratulationsModal');
+        const closeModalButton = document.getElementById('closeModalButton');
+
+        function showCongratulationsModal() {
+            congratulationsModal.classList.add('show');
+            // Pausar la música de fondo si está sonando
+            const music = document.getElementById('background-music');
+            if (music && !music.paused) {
+                music.pause();
+            }
+        }
+
+        function hideCongratulationsModal() {
+            congratulationsModal.classList.remove('show');
+            // Reanudar la música de fondo
+            const music = document.getElementById('background-music');
+            if (music && music.paused) {
+                music.play().catch(e => console.log("No se pudo reanudar la música automáticamente."));
+            }
+        }
+
+        closeModalButton.addEventListener('click', hideCongratulationsModal);
+
+        // Función para el confeti
+        function triggerConfetti() {
+            // Configuración del confeti para que se ajuste a la paleta de colores
+            confetti({
+                particleCount: 150,
+                spread: 120,
+                origin: { y: 0.6 },
+                colors: confettiColors,
+                scalar: 1.2, // Tamaño de las partículas
+                shapes: ['circle', 'square'], // Formas de las partículas
+            });
+        }
+
+        // Inicializar todas las tarjetas al cargar la página
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.style.display = 'block'; // Mostrar indicador de carga
+
+            // Autenticar con Firebase y obtener el userId
+            await signInFirebase();
+
+            // Cargar el progreso guardado
+            loadCourseProgress((loadedStatus) => {
+                // Inicializar courseStatus con los valores por defecto si no hay datos guardados
+                for (const id in coursesData) {
+                    courseStatus[id] = loadedStatus[id] || 'pending';
+                }
+
+                // Habilitar las materias del primer año y aquellas sin correlativas
+                for (const id in coursesData) {
+                    if (coursesData[id].correlatives.length === 0) {
+                        const card = document.getElementById(id);
+                        if (card) {
+                            card.classList.remove('disabled');
+                        }
+                    }
+                }
+
+                updateAllCourseCards(); // Aplicar el estado cargado a la UI
+                enableCorrelatives(); // Habilitar correlativas según el estado cargado
+                loadingIndicator.style.display = 'none'; // Ocultar indicador de carga
+
+                // Añadir event listeners a todas las tarjetas después de cargar el estado inicial
+                document.querySelectorAll('.course-card').forEach(card => {
+                    card.addEventListener('click', (event) => {
+                        const courseId = card.id;
+                        if (card.classList.contains('disabled') || card.classList.contains('approved')) {
+                            return; // No hacer nada si está deshabilitada o ya aprobada
+                        }
+
+                        // Regularizar materia (si está pendiente)
+                        if (courseStatus[courseId] === 'pending') {
+                            courseStatus[courseId] = 'regularized';
+                            updateCourseCard(courseId);
+                            enableCorrelatives(); // Intentar habilitar nuevas materias
+                            saveCourseProgress(courseStatus); // Guardar el progreso
+                        }
+                    });
+
+                    card.addEventListener('dblclick', (event) => {
+                        const courseId = card.id;
+                        if (courseStatus[courseId] === 'regularized') {
+                            courseStatus[courseId] = 'approved';
+                            updateCourseCard(courseId);
+                            enableCorrelatives(); // Vuelve a intentar habilitar por si una materia aprobada habilita más
+                            saveCourseProgress(courseStatus); // Guardar el progreso
+                        }
+                    });
+                });
+            });
+
+            // Intentar reproducir la música al cargar la página
+            const music = document.getElementById('background-music');
+            if (music) {
+                music.play().catch(e => {
+                    console.log("Autoplay de audio bloqueado por el navegador. El usuario debe interactuar primero.");
+                    // Puedes añadir un botón de "Reproducir Música" si quieres que el usuario la active manualmente
+                });
+            }
+        });
+    </script>
+</body>
+</html>
