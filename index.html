@@ -52,98 +52,6 @@
             }
         };
 
-        // Escuchar cambios en el estado de autenticación
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUserId = user.uid;
-                window.firebaseUserId = currentUserId;
-                console.log("Firebase authenticated. User ID:", currentUserId);
-
-                const loadingIndicator = document.getElementById('loadingIndicator');
-
-                // Load saved progress
-                loadCourseProgress((loadedStatus) => {
-                    // Update courseStatus with loaded data, or keep 'pending' if no data
-                    for (const id in coursesData) {
-                        courseStatus[id] = loadedStatus[id] || 'pending';
-                    }
-
-                    // Enable first year courses and those without correlatives
-                    for (const id in coursesData) {
-                        if (coursesData[id].correlatives.length === 0) {
-                            const card = document.getElementById(id);
-                            if (card) {
-                                card.classList.remove('disabled');
-                            }
-                        }
-                    }
-
-                    updateAllCourseCards(); // Apply loaded state to UI
-                    enableCorrelatives(); // Enable correlatives based on loaded state
-                    loadingIndicator.classList.remove('show'); // Hide loading indicator
-
-                    // Add event listeners to all cards after initial state is loaded
-                    // This part should only be attached once.
-                    if (!document.body.dataset.listenersAttached) {
-                        document.querySelectorAll('.course-card').forEach(card => {
-                            card.addEventListener('click', (event) => {
-                                const courseId = card.id;
-                                if (card.classList.contains('disabled') || card.classList.contains('approved')) {
-                                    return;
-                                }
-
-                                if (courseStatus[courseId] === 'pending') {
-                                    courseStatus[courseId] = 'regularized';
-                                    updateCourseCard(courseId);
-                                    enableCorrelatives();
-                                    saveCourseProgress(courseStatus);
-                                }
-                            });
-
-                            card.addEventListener('dblclick', (event) => {
-                                const courseId = card.id;
-                                if (courseStatus[courseId] === 'regularized') {
-                                    courseStatus[courseId] = 'approved';
-                                    updateCourseCard(courseId);
-                                    enableCorrelatives();
-                                    saveCourseProgress(courseStatus);
-                                }
-                            });
-                        });
-                        document.body.dataset.listenersAttached = 'true'; // Mark listeners as attached
-                    }
-                });
-
-                // Try to play background music
-                const music = document.getElementById('background-music');
-                if (music) {
-                    music.play().catch(e => {
-                        console.log("Autoplay de audio bloqueado por el navegador. El usuario debe interactuar primero.");
-                    });
-                }
-
-            } else {
-                currentUserId = null;
-                window.firebaseUserId = null;
-                console.log("User unauthenticated.");
-                // If unauthenticated, hide loading and enable first year courses (no persistence)
-                const loadingIndicator = document.getElementById('loadingIndicator');
-                loadingIndicator.classList.remove('show'); // Hide loading indicator
-                for (const id in coursesData) {
-                    courseStatus[id] = 'pending'; // Reset to pending
-                    const card = document.getElementById(id);
-                    if (card) {
-                        card.classList.remove('regularized', 'approved'); // Clear previous states
-                        if (coursesData[id].correlatives.length === 0) {
-                            card.classList.remove('disabled'); // Enable first year courses
-                        } else {
-                            card.classList.add('disabled'); // Disable others
-                        }
-                    }
-                }
-            }
-        });
-
         // Funciones de Firestore para guardar y cargar
         window.saveCourseProgress = async (courseStatusToSave) => {
             if (!currentUserId) {
@@ -246,6 +154,7 @@
             z-index: 1;
         }
 
+        /* Estilos para el indicador de carga (ahora como overlay) */
         .loading-indicator {
             position: fixed; /* Fixed position to cover the whole screen */
             top: 0;
@@ -1027,51 +936,97 @@
         confirmResetNoButton.addEventListener('click', hideConfirmResetModal);
 
 
-        // Inicializar todas las tarjetas al cargar la página
-        document.addEventListener('DOMContentLoaded', async () => {
+        // Este listener es crucial. Se dispara cuando el estado de autenticación cambia (incluida la carga inicial).
+        onAuthStateChanged(auth, (user) => {
             const loadingIndicator = document.getElementById('loadingIndicator');
-            loadingIndicator.classList.add('show'); // Mostrar indicador de carga
+            if (user) {
+                currentUserId = user.uid;
+                window.firebaseUserId = currentUserId;
+                console.log("Firebase autenticado. User ID:", currentUserId);
 
-            // Autenticar con Firebase y obtener el userId
-            await signInFirebase();
+                // Cargar el progreso guardado
+                loadCourseProgress((loadedStatus) => {
+                    // Actualizar courseStatus con los datos cargados, o mantener 'pending' si no hay datos
+                    for (const id in coursesData) {
+                        courseStatus[id] = loadedStatus[id] || 'pending';
+                    }
 
-            // Cargar el progreso guardado
-            loadCourseProgress((loadedStatus) => {
-                // Inicializar courseStatus con los valores por defecto si no hay datos guardados
+                    // Habilitar las materias del primer año y aquellas sin correlativas
+                    for (const id in coursesData) {
+                        if (coursesData[id].correlatives.length === 0) {
+                            const card = document.getElementById(id);
+                            if (card) {
+                                card.classList.remove('disabled');
+                            }
+                        }
+                    }
+
+                    updateAllCourseCards(); // Aplicar el estado cargado a la UI
+                    enableCorrelatives(); // Habilitar correlativas según el estado cargado
+                    loadingIndicator.classList.remove('show'); // Ocultar indicador de carga aquí, después de que la UI se actualice
+
+                    // Adjuntar event listeners solo una vez
+                    if (!document.body.dataset.listenersAttached) {
+                        document.querySelectorAll('.course-card').forEach(card => {
+                            card.addEventListener('click', (event) => {
+                                const courseId = card.id;
+                                if (card.classList.contains('disabled') || card.classList.contains('approved')) {
+                                    return;
+                                }
+                                if (courseStatus[courseId] === 'pending') {
+                                    courseStatus[courseId] = 'regularized';
+                                    updateCourseCard(courseId);
+                                    enableCorrelatives();
+                                    saveCourseProgress(courseStatus);
+                                }
+                            });
+
+                            card.addEventListener('dblclick', (event) => {
+                                const courseId = card.id;
+                                if (courseStatus[courseId] === 'regularized') {
+                                    courseStatus[courseId] = 'approved';
+                                    updateCourseCard(courseId);
+                                    enableCorrelatives();
+                                    saveCourseProgress(courseStatus);
+                                }
+                            });
+                        });
+                        document.body.dataset.listenersAttached = 'true'; // Marcar que los listeners ya se adjuntaron
+                    }
+                });
+
+            } else {
+                currentUserId = null;
+                window.firebaseUserId = null;
+                console.log("Usuario desautenticado.");
+
+                // Si no está autenticado, restablecer la UI a la configuración predeterminada (sin persistencia)
                 for (const id in coursesData) {
-                    courseStatus[id] = loadedStatus[id] || 'pending';
-                }
-
-                // Habilitar las materias del primer año y aquellas sin correlativas
-                for (const id in coursesData) {
-                    if (coursesData[id].correlatives.length === 0) {
-                        const card = document.getElementById(id);
-                        if (card) {
-                            card.classList.remove('disabled');
+                    courseStatus[id] = 'pending'; // Restablecer a pendiente
+                    const card = document.getElementById(id);
+                    if (card) {
+                        card.classList.remove('regularized', 'approved'); // Limpiar estados anteriores
+                        if (coursesData[id].correlatives.length === 0) {
+                            card.classList.remove('disabled'); // Habilitar materias de primer año
+                        } else {
+                            card.classList.add('disabled'); // Deshabilitar otras
                         }
                     }
                 }
-
-                updateAllCourseCards(); // Aplicar el estado cargado a la UI
-                enableCorrelatives(); // Habilitar correlativas según el estado cargado
-                loadingIndicator.classList.remove('show'); // Ocultar indicador de carga
-
-                // Añadir event listeners a todas las tarjetas después de cargar el estado inicial
-                // Este bloque solo se adjuntará una vez.
+                loadingIndicator.classList.remove('show'); // Ocultar indicador de carga incluso si no está autenticado
+                // Adjuntar listeners para el modo sin persistencia, si aún no se han adjuntado
                 if (!document.body.dataset.listenersAttached) {
                     document.querySelectorAll('.course-card').forEach(card => {
                         card.addEventListener('click', (event) => {
                             const courseId = card.id;
                             if (card.classList.contains('disabled') || card.classList.contains('approved')) {
-                                return; // No hacer nada si está deshabilitada o ya aprobada
+                                return;
                             }
-
-                            // Regularizar materia (si está pendiente)
                             if (courseStatus[courseId] === 'pending') {
                                 courseStatus[courseId] = 'regularized';
                                 updateCourseCard(courseId);
-                                enableCorrelatives(); // Intentar habilitar nuevas materias
-                                saveCourseProgress(courseStatus); // Guardar el progreso
+                                enableCorrelatives();
+                                // No saveCourseProgress aquí ya que la base de datos no está disponible
                             }
                         });
 
@@ -1080,21 +1035,30 @@
                             if (courseStatus[courseId] === 'regularized') {
                                 courseStatus[courseId] = 'approved';
                                 updateCourseCard(courseId);
-                                enableCorrelatives(); // Vuelve a intentar habilitar por si una materia aprobada habilita más
-                                saveCourseProgress(courseStatus); // Guardar el progreso
+                                enableCorrelatives();
+                                // No saveCourseProgress aquí ya que la base de datos no está disponible
                             }
                         });
                     });
-                    document.body.dataset.listenersAttached = 'true'; // Marcar que los listeners ya se adjuntaron
+                    document.body.dataset.listenersAttached = 'true';
                 }
-            });
+            }
+        });
 
-            // Intentar reproducir la música al cargar la página
+        // Inicializar la página al cargar el DOM
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.classList.add('show'); // Mostrar indicador de carga al inicio
+
+            // Iniciar el proceso de autenticación de Firebase.
+            // El listener onAuthStateChanged manejará las actualizaciones de la UI una vez que se conozca el estado de autenticación.
+            signInFirebase();
+
+            // Intentar reproducir la música de fondo inmediatamente, ya que no depende del estado de autenticación/carga de datos
             const music = document.getElementById('background-music');
             if (music) {
                 music.play().catch(e => {
                     console.log("Autoplay de audio bloqueado por el navegador. El usuario debe interactuar primero.");
-                    // Puedes añadir un botón de "Reproducir Música" si quieres que el usuario la active manualmente
                 });
             }
         });
