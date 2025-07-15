@@ -7,6 +7,103 @@
     <link href="https://fonts.googleapis.com/css2?family=Merriweather+Sans:wght@300;400;700&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet">
     <!-- Biblioteca de Confeti -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variables globales proporcionadas por el entorno de Canvas/Immersive
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentUserId = null; // Para almacenar el ID del usuario actual
+
+        // Exportar para que el script principal pueda usarlos
+        window.firebaseApp = app;
+        window.firebaseDb = db;
+        window.firebaseAuth = auth;
+        window.firebaseUserId = currentUserId; // Se actualizará después de la autenticación
+        window.signInFirebase = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                currentUserId = auth.currentUser.uid;
+                window.firebaseUserId = currentUserId; // Actualizar la variable global
+                console.log("Firebase autenticado. User ID:", currentUserId);
+                return currentUserId;
+            } catch (error) {
+                console.error("Error al autenticar con Firebase:", error);
+                // Si falla la autenticación, usar un ID aleatorio para permitir el uso local sin persistencia
+                currentUserId = crypto.randomUUID();
+                window.firebaseUserId = currentUserId;
+                console.warn("Usando ID de usuario aleatorio debido a fallo de autenticación:", currentUserId);
+                return currentUserId;
+            }
+        };
+
+        // Escuchar cambios en el estado de autenticación
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUserId = user.uid;
+                window.firebaseUserId = currentUserId;
+                console.log("Estado de autenticación cambiado. User ID:", currentUserId);
+                // Aquí podrías llamar a loadProgress() si no lo haces en DOMContentLoaded
+            } else {
+                currentUserId = null;
+                window.firebaseUserId = null;
+                console.log("Usuario desautenticado.");
+            }
+        });
+
+        // Funciones de Firestore para guardar y cargar
+        window.saveCourseProgress = async (courseStatus) => {
+            if (!currentUserId) {
+                console.warn("No hay ID de usuario para guardar el progreso.");
+                return;
+            }
+            try {
+                const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/careerProgress`, 'myCourses');
+                await setDoc(userDocRef, { status: courseStatus });
+                console.log("Progreso guardado exitosamente.");
+            } catch (e) {
+                console.error("Error al guardar el progreso: ", e);
+            }
+        };
+
+        window.loadCourseProgress = (callback) => {
+            if (!currentUserId) {
+                console.warn("No hay ID de usuario para cargar el progreso.");
+                callback({}); // Retorna un objeto vacío si no hay usuario
+                return;
+            }
+            const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/careerProgress`, 'myCourses');
+            onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    console.log("Progreso cargado:", data.status);
+                    callback(data.status);
+                } else {
+                    console.log("No se encontró progreso guardado.");
+                    callback({}); // Retorna un objeto vacío si no hay datos
+                }
+            }, (error) => {
+                console.error("Error al cargar el progreso: ", error);
+                callback({}); // Retorna un objeto vacío en caso de error
+            });
+        };
+    </script>
+
     <style>
         /* Estilos Generales y Reseteo */
         :root {
@@ -47,10 +144,9 @@
             height: 100%;
             /* Puedes cambiar estas URLs por imágenes reales que te gusten */
             /* Sugerencia: Busca imágenes de dominio público en Unsplash, Pexels, o Wikimedia Commons */
-            background-image: 
-                url('https://unsplash.com/photos/white-painted-decorative-interior-roof-scenery-SbREwbDuLZw'),
-                url('https://unsplash.com/photos/concrete-man-statue-AUgTvvQxDhg'),
-                url('https://unsplash.com/photos/flowers-shown-to-the-children-book-on-shelf-FveJVZScEWg');
+            background-image:
+                url('https://placehold.co/1920x1080/f0e8d8/606060?text=Estatua+Griega+Sutil'), /* Estatua */
+                url('https://placehold.co/1920x1080/e0e0d8/606060?text=Patron+Antiguo'); /* Patrón o textura */
             background-size: cover, cover;
             background-position: center center, center center;
             background-repeat: no-repeat, no-repeat;
@@ -69,6 +165,16 @@
             letter-spacing: 2px;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
             position: relative; /* Para que esté por encima del fondo */
+            z-index: 1;
+        }
+
+        .loading-indicator {
+            font-family: var(--font-typewriter);
+            color: var(--color-heading);
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            opacity: 0.8;
+            position: relative;
             z-index: 1;
         }
 
@@ -315,9 +421,11 @@
     <audio id="background-music" loop autoplay>
         <!-- ¡IMPORTANTE! Reemplaza esta URL con la de tu archivo de música. -->
         <!-- Ejemplo de URL (solo para demostración, busca una real y libre de derechos): -->
-        <!-- <source src="https://pixabay.com/music/modern-classical-history-historical-background-music-371414/" type="audio/mpeg"> -->
+        <!-- <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg"> -->
         Tu navegador no soporta el elemento de audio.
     </audio>
+
+    <div id="loadingIndicator" class="loading-indicator">Cargando progreso...</div>
 
     <div class="container">
         
@@ -525,7 +633,10 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        // Importar las funciones y variables globales de Firebase
+        const { firebaseApp, firebaseDb, firebaseAuth, signInFirebase, saveCourseProgress, loadCourseProgress } = window;
+
         const coursesData = {
             "course-01": { name: "Desarrollos Psicológicos Contemporáneos", correlatives: [] },
             "course-02": { name: "Problemas Epistemológicos de la Psicología", correlatives: [] },
@@ -563,7 +674,7 @@
         };
 
         // Estado de las materias: 'pending', 'regularized', 'approved'
-        const courseStatus = {};
+        let courseStatus = {}; // Ahora será actualizado por Firestore
 
         // Confetti colors (light academia palette)
         const confettiColors = [
@@ -576,11 +687,6 @@
             '#A9A9A9', // Gris oscuro suave
             '#D2B48C'  // Tan/Arena
         ];
-
-        // Inicializar el estado de todas las materias
-        for (const id in coursesData) {
-            courseStatus[id] = 'pending';
-        }
 
         // Función para verificar si una materia puede ser habilitada
         function canEnableCourse(courseId) {
@@ -610,6 +716,13 @@
                 }
             } else if (!canEnableCourse(courseId)) {
                 card.classList.add('disabled');
+            }
+        }
+
+        // Función para actualizar todas las tarjetas en la UI
+        function updateAllCourseCards() {
+            for (const id in coursesData) {
+                updateCourseCard(id);
             }
         }
 
@@ -644,7 +757,7 @@
             // Reanudar la música de fondo
             const music = document.getElementById('background-music');
             if (music && music.paused) {
-                music.play();
+                music.play().catch(e => console.log("No se pudo reanudar la música automáticamente."));
             }
         }
 
@@ -664,42 +777,60 @@
         }
 
         // Inicializar todas las tarjetas al cargar la página
-        document.addEventListener('DOMContentLoaded', () => {
-            // Habilitar las materias del primer año y aquellas sin correlativas
-            for (const id in coursesData) {
-                if (coursesData[id].correlatives.length === 0) {
-                    const card = document.getElementById(id);
-                    if (card) {
-                        card.classList.remove('disabled');
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.style.display = 'block'; // Mostrar indicador de carga
+
+            // Autenticar con Firebase y obtener el userId
+            await signInFirebase();
+
+            // Cargar el progreso guardado
+            loadCourseProgress((loadedStatus) => {
+                // Inicializar courseStatus con los valores por defecto si no hay datos guardados
+                for (const id in coursesData) {
+                    courseStatus[id] = loadedStatus[id] || 'pending';
+                }
+
+                // Habilitar las materias del primer año y aquellas sin correlativas
+                for (const id in coursesData) {
+                    if (coursesData[id].correlatives.length === 0) {
+                        const card = document.getElementById(id);
+                        if (card) {
+                            card.classList.remove('disabled');
+                        }
                     }
                 }
-            }
-            // Asegurarse de que las materias con correlativas ya cumplidas (si se carga un estado guardado) también se habiliten
-            enableCorrelatives();
 
-            // Añadir event listeners a todas las tarjetas
-            document.querySelectorAll('.course-card').forEach(card => {
-                card.addEventListener('click', (event) => {
-                    const courseId = card.id;
-                    if (card.classList.contains('disabled') || card.classList.contains('approved')) {
-                        return; // No hacer nada si está deshabilitada o ya aprobada
-                    }
+                updateAllCourseCards(); // Aplicar el estado cargado a la UI
+                enableCorrelatives(); // Habilitar correlativas según el estado cargado
+                loadingIndicator.style.display = 'none'; // Ocultar indicador de carga
 
-                    // Regularizar materia (si está pendiente)
-                    if (courseStatus[courseId] === 'pending') {
-                        courseStatus[courseId] = 'regularized';
-                        updateCourseCard(courseId);
-                        enableCorrelatives(); // Intentar habilitar nuevas materias
-                    }
-                });
+                // Añadir event listeners a todas las tarjetas después de cargar el estado inicial
+                document.querySelectorAll('.course-card').forEach(card => {
+                    card.addEventListener('click', (event) => {
+                        const courseId = card.id;
+                        if (card.classList.contains('disabled') || card.classList.contains('approved')) {
+                            return; // No hacer nada si está deshabilitada o ya aprobada
+                        }
 
-                card.addEventListener('dblclick', (event) => {
-                    const courseId = card.id;
-                    if (courseStatus[courseId] === 'regularized') {
-                        courseStatus[courseId] = 'approved';
-                        updateCourseCard(courseId);
-                        enableCorrelatives(); // Vuelve a intentar habilitar por si una materia aprobada habilita más
-                    }
+                        // Regularizar materia (si está pendiente)
+                        if (courseStatus[courseId] === 'pending') {
+                            courseStatus[courseId] = 'regularized';
+                            updateCourseCard(courseId);
+                            enableCorrelatives(); // Intentar habilitar nuevas materias
+                            saveCourseProgress(courseStatus); // Guardar el progreso
+                        }
+                    });
+
+                    card.addEventListener('dblclick', (event) => {
+                        const courseId = card.id;
+                        if (courseStatus[courseId] === 'regularized') {
+                            courseStatus[courseId] = 'approved';
+                            updateCourseCard(courseId);
+                            enableCorrelatives(); // Vuelve a intentar habilitar por si una materia aprobada habilita más
+                            saveCourseProgress(courseStatus); // Guardar el progreso
+                        }
+                    });
                 });
             });
 
