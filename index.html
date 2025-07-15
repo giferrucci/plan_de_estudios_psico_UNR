@@ -74,6 +74,7 @@
                 return;
             }
             const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/careerProgress`, 'myCourses');
+            // onSnapshot es un listener en tiempo real, se ejecuta una vez al inicio y luego en cada cambio.
             onSnapshot(userDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -936,132 +937,100 @@
         confirmResetNoButton.addEventListener('click', hideConfirmResetModal);
 
 
-        // Este listener es crucial. Se dispara cuando el estado de autenticación cambia (incluida la carga inicial).
+        // Este listener de onAuthStateChanged ahora solo actualiza currentUserId
+        // La lógica de carga y UI se maneja en DOMContentLoaded para una secuencia clara.
         onAuthStateChanged(auth, (user) => {
-            const loadingIndicator = document.getElementById('loadingIndicator');
             if (user) {
                 currentUserId = user.uid;
                 window.firebaseUserId = currentUserId;
                 console.log("Firebase autenticado. User ID:", currentUserId);
-
-                // Cargar el progreso guardado
-                loadCourseProgress((loadedStatus) => {
-                    // Actualizar courseStatus con los datos cargados, o mantener 'pending' si no hay datos
-                    for (const id in coursesData) {
-                        courseStatus[id] = loadedStatus[id] || 'pending';
-                    }
-
-                    // Habilitar las materias del primer año y aquellas sin correlativas
-                    for (const id in coursesData) {
-                        if (coursesData[id].correlatives.length === 0) {
-                            const card = document.getElementById(id);
-                            if (card) {
-                                card.classList.remove('disabled');
-                            }
-                        }
-                    }
-
-                    updateAllCourseCards(); // Aplicar el estado cargado a la UI
-                    enableCorrelatives(); // Habilitar correlativas según el estado cargado
-                    loadingIndicator.classList.remove('show'); // Ocultar indicador de carga aquí, después de que la UI se actualice
-
-                    // Adjuntar event listeners solo una vez
-                    if (!document.body.dataset.listenersAttached) {
-                        document.querySelectorAll('.course-card').forEach(card => {
-                            card.addEventListener('click', (event) => {
-                                const courseId = card.id;
-                                if (card.classList.contains('disabled') || card.classList.contains('approved')) {
-                                    return;
-                                }
-                                if (courseStatus[courseId] === 'pending') {
-                                    courseStatus[courseId] = 'regularized';
-                                    updateCourseCard(courseId);
-                                    enableCorrelatives();
-                                    saveCourseProgress(courseStatus);
-                                }
-                            });
-
-                            card.addEventListener('dblclick', (event) => {
-                                const courseId = card.id;
-                                if (courseStatus[courseId] === 'regularized') {
-                                    courseStatus[courseId] = 'approved';
-                                    updateCourseCard(courseId);
-                                    enableCorrelatives();
-                                    saveCourseProgress(courseStatus);
-                                }
-                            });
-                        });
-                        document.body.dataset.listenersAttached = 'true'; // Marcar que los listeners ya se adjuntaron
-                    }
-                });
-
             } else {
                 currentUserId = null;
                 window.firebaseUserId = null;
                 console.log("Usuario desautenticado.");
-
-                // Si no está autenticado, restablecer la UI a la configuración predeterminada (sin persistencia)
-                for (const id in coursesData) {
-                    courseStatus[id] = 'pending'; // Restablecer a pendiente
-                    const card = document.getElementById(id);
-                    if (card) {
-                        card.classList.remove('regularized', 'approved'); // Limpiar estados anteriores
-                        if (coursesData[id].correlatives.length === 0) {
-                            card.classList.remove('disabled'); // Habilitar materias de primer año
-                        } else {
-                            card.classList.add('disabled'); // Deshabilitar otras
-                        }
-                    }
-                }
-                loadingIndicator.classList.remove('show'); // Ocultar indicador de carga incluso si no está autenticado
-                // Adjuntar listeners para el modo sin persistencia, si aún no se han adjuntado
-                if (!document.body.dataset.listenersAttached) {
-                    document.querySelectorAll('.course-card').forEach(card => {
-                        card.addEventListener('click', (event) => {
-                            const courseId = card.id;
-                            if (card.classList.contains('disabled') || card.classList.contains('approved')) {
-                                return;
-                            }
-                            if (courseStatus[courseId] === 'pending') {
-                                courseStatus[courseId] = 'regularized';
-                                updateCourseCard(courseId);
-                                enableCorrelatives();
-                                // No saveCourseProgress aquí ya que la base de datos no está disponible
-                            }
-                        });
-
-                        card.addEventListener('dblclick', (event) => {
-                            const courseId = card.id;
-                            if (courseStatus[courseId] === 'regularized') {
-                                courseStatus[courseId] = 'approved';
-                                updateCourseCard(courseId);
-                                enableCorrelatives();
-                                // No saveCourseProgress aquí ya que la base de datos no está disponible
-                            }
-                        });
-                    });
-                    document.body.dataset.listenersAttached = 'true';
-                }
             }
         });
 
-        // Inicializar la página al cargar el DOM
-        document.addEventListener('DOMContentLoaded', async () => {
+        // Función principal para inicializar la UI y cargar datos
+        async function initializeAppUI() {
             const loadingIndicator = document.getElementById('loadingIndicator');
             loadingIndicator.classList.add('show'); // Mostrar indicador de carga al inicio
 
-            // Iniciar el proceso de autenticación de Firebase.
-            // El listener onAuthStateChanged manejará las actualizaciones de la UI una vez que se conozca el estado de autenticación.
-            signInFirebase();
+            // 1. Autenticar con Firebase y obtener el userId
+            await signInFirebase();
 
-            // Intentar reproducir la música de fondo inmediatamente, ya que no depende del estado de autenticación/carga de datos
+            // 2. Cargar el progreso guardado (o inicializar si no hay)
+            // Se usa una Promise para asegurar que la carga se complete antes de continuar.
+            await new Promise(resolve => {
+                if (window.firebaseDb) { // Asegurarse de que la base de datos esté disponible
+                    loadCourseProgress((loadedStatus) => {
+                        for (const id in coursesData) {
+                            courseStatus[id] = loadedStatus[id] || 'pending';
+                        }
+                        resolve(); // Resolver la promesa una vez que los datos estén cargados/inicializados
+                    });
+                } else {
+                    console.warn("Firebase database not available. Initializing UI without persistence.");
+                    for (const id in coursesData) {
+                        courseStatus[id] = 'pending';
+                    }
+                    resolve(); // Resolver inmediatamente si no hay DB
+                }
+            });
+
+            // 3. Configurar la UI inicial y ocultar el indicador de carga
+            for (const id in coursesData) {
+                if (coursesData[id].correlatives.length === 0) {
+                    const card = document.getElementById(id);
+                    if (card) {
+                        card.classList.remove('disabled');
+                    }
+                }
+            }
+            updateAllCourseCards(); // Aplicar el estado cargado/inicial a la UI
+            enableCorrelatives(); // Habilitar correlativas según el estado
+            loadingIndicator.classList.remove('show'); // Ocultar indicador de carga
+
+            // 4. Adjuntar event listeners (solo una vez)
+            if (!document.body.dataset.listenersAttached) {
+                document.querySelectorAll('.course-card').forEach(card => {
+                    card.addEventListener('click', (event) => {
+                        const courseId = card.id;
+                        if (card.classList.contains('disabled') || card.classList.contains('approved')) {
+                            return;
+                        }
+                        if (courseStatus[courseId] === 'pending') {
+                            courseStatus[courseId] = 'regularized';
+                            updateCourseCard(courseId);
+                            enableCorrelatives();
+                            if (window.firebaseDb) saveCourseProgress(courseStatus); // Guardar solo si hay DB
+                        }
+                    });
+
+                    card.addEventListener('dblclick', (event) => {
+                        const courseId = card.id;
+                        if (courseStatus[courseId] === 'regularized') {
+                            courseStatus[courseId] = 'approved';
+                            updateCourseCard(courseId);
+                            enableCorrelatives();
+                            if (window.firebaseDb) saveCourseProgress(courseStatus); // Guardar solo si hay DB
+                        }
+                    });
+                });
+                document.body.dataset.listenersAttached = 'true';
+            }
+
+            // 5. Intentar reproducir la música de fondo
             const music = document.getElementById('background-music');
             if (music) {
                 music.play().catch(e => {
                     console.log("Autoplay de audio bloqueado por el navegador. El usuario debe interactuar primero.");
                 });
             }
-        });
+        }
+
+        // Iniciar la aplicación cuando el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', initializeAppUI);
     </script>
 </body>
 </html>
